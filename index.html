@@ -120,6 +120,11 @@ canvas{width:100%;height:100%;display:block}
 .tag{font-size:.68rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin-left:6px}
 .empty{color:var(--muted);font-size:.9rem}
 .note{font-size:.85rem;color:var(--muted);max-width:65ch}
+.errbox{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;padding:14px 16px;border-radius:12px;border:1px solid var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--panel))}
+.errtext{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1 1 260px}
+.errtext strong{color:var(--warn)}
+.errtext code{font-family:var(--mono);font-size:.78rem;color:var(--muted);word-break:break-word;white-space:normal}
+.erractions{display:flex;gap:8px;flex-wrap:wrap}
 .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--btn);color:var(--btn-ink);
   padding:10px 16px;border-radius:10px;font-size:.9rem;max-width:calc(100% - 32px);box-shadow:0 6px 24px rgba(0,0,0,.18)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -127,12 +132,16 @@ canvas{width:100%;height:100%;display:block}
 
 <div class="wrap">
   <header>
-    <h1>Painel de Extração <span class="ver" id="ver" title="Versão do app">v1.3</span></h1>
+    <h1>Painel de Extração <span class="ver" id="ver" title="Versão do app">v1.4</span></h1>
     <div class="status">
       <span class="chip" id="chip"><span class="dot"></span><span id="chipText">Balança simulada</span></span>
       <button class="ghost" id="btnConnect" type="button">Conectar balança</button>
     </div>
   </header>
+  <div class="errbox" id="errbox" role="alert" hidden>
+    <div class="errtext"><strong>Não foi possível conectar</strong><span id="errMsg"></span><code id="errDetail"></code></div>
+    <div class="erractions"><button type="button" class="ghost" id="errAll" hidden>Mostrar todos os aparelhos</button><button type="button" class="ghost" id="errClose">Fechar</button></div>
+  </div>
 
   <nav class="tabs" role="tablist" aria-label="Telas">
     <button type="button" role="tab" id="tabbtn-extracao" data-tab="extracao" aria-selected="true">Extração</button>
@@ -324,34 +333,55 @@ async function onBleDisconnected(){
 }
 function useSimulator(msg){if(blePoll){clearInterval(blePoll);blePoll=null;}source='sim';bleDevice=null;bleChar=null;sim.reset();tareOffset=0;setChip('Balança simulada',false);$('btnConnect').textContent='Conectar balança';if(msg)toast(msg);}
 
-$('btnConnect').onclick=async()=>{
+function diag(){
+  const ua=navigator.userAgent;
+  const nav=/Bluefy/i.test(ua)?'Bluefy':/CriOS/i.test(ua)?'Chrome do iPhone':/iPhone|iPad/i.test(ua)?'Safari ou outro do iPhone':/Edg\//.test(ua)?'Edge':/Chrome/.test(ua)?'Chrome':'outro';
+  return 'Navegador: '+nav+' · Web Bluetooth: '+(navigator.bluetooth?'sim':'não')+' · etapa: '+(bleStep||'-')+' · v'+($('ver').textContent.replace('v',''));
+}
+function showError(msg,err,withRetryAll){
+  $('errMsg').textContent=msg;
+  $('errDetail').textContent=(err?(err.name||'Erro')+': '+(err.message||String(err))+' · ':'')+diag();
+  $('errAll').hidden=!withRetryAll; $('errbox').hidden=false;
+}
+$('errClose').onclick=()=>{$('errbox').hidden=true;};
+$('errAll').onclick=()=>{$('errbox').hidden=true;connectBle(true);};
+
+async function connectBle(showAll){
   if(source==='ble'&&bleDevice){userDisconnect=true;try{bleDevice.gatt.disconnect();}catch(e){}useSimulator('Balança desconectada. Usando o simulador.');return;}
-  if(!navigator.bluetooth){toast('Este navegador não tem Bluetooth. No iPhone, use o app Bluefy; no computador, o Chrome ou o Edge.');return;}
+  $('errbox').hidden=true; bleStep='verificar o navegador';
+  if(!navigator.bluetooth){showError('Este navegador não tem Bluetooth. No iPhone, abra o endereço dentro do app Bluefy (o Safari e o Chrome do iPhone não têm). No computador, use Chrome ou Edge.');return;}
   try{
     userDisconnect=false;
-    bleStep='procurar a balança';
-    try{
-      bleDevice=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'TIMEMORE'},{namePrefix:'Timemore'},{services:[BLE.SERVICE]}],optionalServices:[BLE.SERVICE]});
-    }catch(e1){
-      // alguns navegadores (ex.: Bluefy) recusam filtros combinados: tenta mostrando todos os aparelhos
-      if(e1&&(e1.name==='TypeError'||e1.name==='NotSupportedError'||e1.name==='InvalidStateError')){
-        bleDevice=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[BLE.SERVICE,'0000fff0-0000-1000-8000-00805f9b34fb']});
+    bleStep=showAll?'procurar aparelhos (todos)':'procurar a balança';
+    const opts=showAll
+      ? {acceptAllDevices:true,optionalServices:[BLE.SERVICE]}
+      : {filters:[{namePrefix:'TIMEMORE'},{namePrefix:'Timemore'},{services:[BLE.SERVICE]}],optionalServices:[BLE.SERVICE]};
+    try{ bleDevice=await navigator.bluetooth.requestDevice(opts); }
+    catch(e1){
+      if(!showAll&&e1&&(e1.name==='TypeError'||e1.name==='NotSupportedError'||e1.name==='InvalidStateError')){
+        bleStep='procurar aparelhos (todos)';
+        bleDevice=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[BLE.SERVICE]});
       } else throw e1;
     }
     bleDevice.addEventListener('gattserverdisconnected',onBleDisconnected);
     await bleSubscribe();
+    $('errbox').hidden=true;
     toast('Conectado em '+(bleDevice.name||'Timemore')+(bleMode&&bleMode!=='notify'?' (modo: '+bleMode+')':'')+'. Coloque a xícara e toque em Tarar.');
   }catch(e){
     userDisconnect=true; try{bleDevice&&bleDevice.gatt.connected&&bleDevice.gatt.disconnect();}catch(_){}
     if(blePoll){clearInterval(blePoll);blePoll=null;}
     bleDevice=null; setChip(source==='ble'?'Balança conectada':'Balança simulada',source==='ble');
-    if(e&&e.name==='NotFoundError') return; // a pessoa fechou a janela de escolha
-    if(e&&(e.name==='SecurityError'||e.name==='NotAllowedError')) return toast('Bluetooth bloqueado ('+e.name+': '+(e.message||'sem detalhes')+'). No iPhone: Ajustes → Bluefy → ligue o Bluetooth, e confira se o Bluetooth do iPhone está ligado. No computador: abra pelo arquivo ou pelo endereço https, no Chrome ou Edge.');
     console.warn('Falha no Bluetooth na etapa:',bleStep,e);
-    if(/not paired/i.test(e&&e.message||'')) toast('[etapa: '+bleStep+'] O Windows recusou o acesso sem pareamento criptografado. '+(e.message||'')+'. Tente remover a balança do Windows e deixar o Chrome parear sozinho.');
-    else toast('Não consegui '+(bleStep||'conectar')+' ('+(e&&e.message||e)+'). Feche o app da Timemore e o do ESP32 e tente de novo.');
+    if(e&&e.name==='NotFoundError'){
+      if(/cancel/i.test(e.message||'')&&!showAll) return; // a pessoa fechou a lista
+      return showError(showAll?'Nenhum aparelho foi escolhido ou encontrado.':'A balança não apareceu na busca. Confira se ela está ligada e livre (app da Timemore fechado), ou tente mostrando todos os aparelhos.',e,!showAll);
+    }
+    if(e&&(e.name==='SecurityError'||e.name==='NotAllowedError')) return showError('O Bluetooth foi bloqueado. No iPhone: Ajustes → Bluefy → ligue o Bluetooth, e confira se o Bluetooth do iPhone está ligado. No computador: abra pelo arquivo ou pelo endereço https, no Chrome ou Edge.',e);
+    if(/not paired/i.test(e&&e.message||'')) return showError('O sistema recusou o acesso sem pareamento criptografado. No Windows: remova a balança em Bluetooth e dispositivos e pareie de novo.',e);
+    showError('Não consegui '+(bleStep||'conectar')+'. Feche o app da Timemore e desligue o ESP32, depois tente de novo.',e,!showAll);
   }
-};
+}
+$('btnConnect').onclick=()=>connectBle(false);
 
 function setStartBtn(){const b=$('btnStart');
   b.textContent=waitingFlow?'Cancelar':running?(pumpStopped?'Encerrar agora':'Parar'):'Iniciar';
