@@ -1,0 +1,584 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
+<title>Painel de Extração</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: instrumento de bancada. Leituras grandes à esquerda, curva da extração à direita; empilha no celular. */
+:root{
+  --bg:#EEF1EF; --panel:#F8FAF9; --ink:#14201C; --muted:#5E6B66; --line:#D3DAD6;
+  --weight:#1E6A82; --flow:#B7791F; --target:#8A4FA3; --ok:#2E7D4F; --warn:#B4532A;
+  --btn:#14201C; --btn-ink:#F8FAF9;
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1513; --panel:#161E1B; --ink:#E6ECE9; --muted:#8D9A95; --line:#28332F;
+  --weight:#5FB4CF; --flow:#E2A54A; --target:#C08AD6; --ok:#5FBF86; --warn:#E3825A;
+  --btn:#E6ECE9; --btn-ink:#0F1513; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1513; --panel:#161E1B; --ink:#E6ECE9; --muted:#8D9A95; --line:#28332F;
+  --weight:#5FB4CF; --flow:#E2A54A; --target:#C08AD6; --ok:#5FBF86; --warn:#E3825A;
+  --btn:#E6ECE9; --btn-ink:#0F1513; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45;
+  padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+h1{font-family:var(--display);font-weight:700;font-size:1.6rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:8px;font-size:.8rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--muted)}
+.chip .dot{width:8px;height:8px;border-radius:50%;background:var(--flow)}
+.chip.live .dot{background:var(--ok)}
+.grid{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+.readout{display:flex;flex-direction:column;gap:4px}
+.label{font-size:.72rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.big{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums;font-size:clamp(3.4rem,11vw,4.6rem);line-height:1;letter-spacing:-.03em}
+.big small{font-size:.38em;font-weight:400;color:var(--muted);margin-left:6px;letter-spacing:0}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.mid{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums;font-size:1.9rem;line-height:1.1}
+.mid small{font-size:.5em;font-weight:400;color:var(--muted);margin-left:4px}
+.flowc{color:var(--flow)} .wc{color:var(--weight)} .tc{color:var(--target)}
+.trio{grid-template-columns:repeat(3,minmax(0,1fr))}
+.gauge-box{position:relative;width:100%;height:270px;margin-top:4px}
+.gauge-box canvas{width:100%;height:100%;display:block}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.trio .mid{font-size:clamp(1.25rem,5vw,1.6rem)}
+.phase{margin-top:12px;font-size:.82rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px}
+.phase::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--line)}
+.phase.on::before{background:var(--flow)} .phase.drip::before{background:var(--target)} .phase.end::before{background:var(--ok)}
+
+.progress{margin-top:16px;display:flex;flex-direction:column;gap:6px}
+.bar{height:10px;border-radius:999px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--weight);transition:width .12s linear}
+.bar.done i{background:var(--ok)}
+.progress .row{display:flex;justify-content:space-between;font-size:.82rem;color:var(--muted);font-variant-numeric:tabular-nums}
+
+.controls{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+button{font:inherit;cursor:pointer;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+  padding:14px 10px;font-weight:600;font-size:.95rem;transition:transform .08s, background .15s}
+button:active{transform:scale(.97)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--weight);outline-offset:2px}
+button.primary{background:var(--btn);color:var(--btn-ink);border-color:var(--btn)}
+button.primary.running{background:var(--warn);border-color:var(--warn);color:#fff}
+button.ghost{padding:8px 12px;font-size:.85rem;border-radius:10px}
+
+.recipe{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field input{font:inherit;font-family:var(--mono);font-size:1.05rem;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
+.field output{font-family:var(--mono);font-size:1.05rem;padding:10px 0;font-weight:600;color:var(--target)}
+.toggles{display:flex;flex-direction:column;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.toggles label{display:flex;align-items:center;gap:10px;font-size:.9rem;cursor:pointer}
+.toggles input{width:18px;height:18px;accent-color:var(--weight)}
+
+.chart-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px}
+.chart-head h2{font-family:var(--display);font-weight:500;font-size:1.15rem;margin:0}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px;background:var(--bg)}
+.seg button{border:0;border-radius:7px;padding:6px 14px;font-size:.85rem;background:none;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.seg button:active{transform:none}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.8rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:14px;height:3px;border-radius:2px;display:inline-block}
+.canvas-box{position:relative;width:100%;height:340px}
+@media (max-width:520px){.canvas-box{height:260px}}
+canvas{width:100%;height:100%;display:block}
+
+.history h2{font-family:var(--display);font-weight:500;font-size:1.15rem;margin:0 0 10px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;padding:10px 14px;color:var(--muted);font-weight:600;display:inline-flex;align-items:center;gap:8px}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--weight)}
+.tabs button:active{transform:none}
+.count{font-family:var(--mono);font-size:.75rem;padding:1px 7px;border-radius:999px;background:var(--line);color:var(--ink)}
+.legend .x{padding:0 6px;border:0;background:none;color:var(--muted);font-size:1rem;line-height:1;border-radius:6px}
+.legend .x:hover{color:var(--ink)}
+.table-box{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+.shots{width:100%;min-width:540px;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.shots th,.shots td{padding:10px 12px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+.shots th+th,.shots td+td{border-left:1px solid var(--line)}
+.shots th:first-child,.shots td:first-child{text-align:left}
+.shots thead th{background:var(--bg);font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.shots tbody tr:last-child td{border-bottom:0}
+.shots tbody tr{cursor:pointer}
+.shots tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--bg) 55%,transparent)}
+.shots tbody tr:hover td{background:var(--bg)}
+.shots tbody tr.sel td{background:color-mix(in srgb,var(--target) 14%,var(--panel))}
+.shots tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--target)}
+.shots tbody tr:focus-visible{outline:2px solid var(--weight);outline-offset:-2px}
+.shots td{font-family:var(--mono);font-size:.9rem}
+.shots td.when{font-family:var(--body);font-weight:600}
+.shots td.empty{text-align:left;font-family:var(--body);color:var(--muted);white-space:normal}
+.tag{font-size:.68rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin-left:6px}
+.empty{color:var(--muted);font-size:.9rem}
+.note{font-size:.85rem;color:var(--muted);max-width:65ch}
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--btn);color:var(--btn-ink);
+  padding:10px 16px;border-radius:10px;font-size:.9rem;max-width:calc(100% - 32px);box-shadow:0 6px 24px rgba(0,0,0,.18)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Painel de Extração</h1>
+    <div class="status">
+      <span class="chip" id="chip"><span class="dot"></span><span id="chipText">Balança simulada</span></span>
+      <button class="ghost" id="btnConnect" type="button">Conectar balança</button>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Telas">
+    <button type="button" role="tab" id="tabbtn-extracao" data-tab="extracao" aria-selected="true">Extração</button>
+    <button type="button" role="tab" id="tabbtn-historico" data-tab="historico" aria-selected="false">Histórico <span class="count" id="shotCount">0</span></button>
+  </nav>
+
+  <div class="grid" id="tab-extracao" role="tabpanel" aria-labelledby="tabbtn-extracao">
+    <div class="col">
+      <section class="panel" aria-label="Leituras">
+        <div class="readout">
+          <span class="label">Peso na xícara</span>
+          <div class="gauge-box"><canvas id="gauge" role="img" aria-label="Ponteiro do peso na xícara"></canvas></div>
+          <span class="sr" id="weight" aria-live="off">0.0 g</span>
+        </div>
+        <div class="pair trio">
+          <div class="readout"><span class="label">Tempo total</span><div class="mid" id="time">00:00.0</div></div>
+          <div class="readout"><span class="label">Até o alvo</span><div class="mid tc" id="tTarget">--</div></div>
+          <div class="readout"><span class="label">Vazão</span><div class="mid flowc" id="flow">0.0<small>g/s</small></div></div>
+        </div>
+        <div class="phase" id="phase">Pronto</div>
+        <div class="progress">
+          <div class="row"><span id="ratioNow">1 : 0.0</span><span id="toGo">faltam 36.0 g</span></div>
+        </div>
+      </section>
+
+      <div class="controls">
+        <button id="btnTare" type="button">Tarar</button>
+        <button id="btnStart" class="primary" type="button">Iniciar</button>
+        <button id="btnReset" type="button">Zerar</button>
+      </div>
+
+      <section class="panel" aria-label="Receita">
+        <span class="label">Receita</span>
+        <div class="recipe" style="margin-top:10px">
+          <div class="field"><label class="label" for="dose">Dose (g)</label><input id="dose" type="number" step="0.1" min="1" value="18"></div>
+          <div class="field"><label class="label" for="ratio">Proporção 1:</label><input id="ratio" type="number" step="0.1" min="0.5" value="2"></div>
+          <div class="field"><span class="label">Alvo</span><output id="target">36.0 g</output></div>
+        </div>
+        <div class="toggles">
+          <label><input type="checkbox" id="autoStart" checked> Iniciar o timer quando o café começar a cair</label>
+          <label><input type="checkbox" id="autoStop" checked> Encerrar o timer quando o café parar de pingar</label>
+        </div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="panel" aria-label="Gráfico da extração">
+        <div class="chart-head">
+          <h2>Curva da extração</h2>
+          <div class="legend" id="legend">
+            <span><i style="background:var(--weight)"></i>Peso (g)</span>
+            <span><i style="background:var(--flow)"></i>Vazão (g/s)</span>
+            <span><i style="background:var(--target)"></i>Alvo</span>
+            <span id="ghostLegend" hidden><i style="background:var(--muted)"></i><span id="ghostName">Comparação</span><button type="button" class="x" id="btnClearGhost" aria-label="Remover comparação">×</button></span>
+          </div>
+        </div>
+        <div class="canvas-box"><canvas id="chart"></canvas></div>
+      </section>
+    </div>
+  </div>
+
+  <div id="tab-historico" role="tabpanel" aria-labelledby="tabbtn-historico" hidden>
+      <section class="panel history">
+        <h2>Extrações</h2>
+        <div class="table-box"><table class="shots">
+          <thead><tr><th scope="col">Data</th><th scope="col">Dose</th><th scope="col">Rendimento</th><th scope="col">Proporção</th><th scope="col">Até o alvo</th><th scope="col">Total</th></tr></thead>
+          <tbody id="shots"></tbody>
+        </table></div>
+        <p class="note" style="margin:12px 0 0">Toque numa extração para ver a curva dela sobreposta à atual na aba Extração. Os dados ficam salvos só neste navegador.</p>
+      </section>
+  </div>
+
+  <p class="note">Sem balança conectada, o app usa um simulador que imita uma extração de espresso. "Conectar balança" liga a Timemore Dot por Bluetooth: funciona no Chrome ou Edge do computador e no app Bluefy do iPhone, abrindo o app pelo arquivo ou por um endereço https próprio. Feche o app da Timemore antes, porque a balança aceita uma conexão por vez.</p>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
+             set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+// ---------- Fonte de dados: balança simulada ----------
+// Interface que o driver Bluetooth real vai implementar: onReading(gramas brutos).
+const sim={raw:0, cup:0, flowing:false, drip:0, t0:0,
+  start(){this.flowing=true;this.t0=performance.now();},
+  stop(){ if(this.flowing){this.flowing=false;this.drip=1.4;} },
+  reset(){this.raw=0;this.flowing=false;this.drip=0;},
+  flowAt(t){ // perfil típico de espresso (g/s)
+    if(t<4) return 0;
+    if(t<8) return (t-4)/4*1.1;
+    if(t<12) return 1.1+(t-8)/4*0.9;
+    return 2.0+(t-12)*0.012;
+  },
+  tick(dt){
+    if(this.flowing){const t=(performance.now()-this.t0)/1000;this.raw+=Math.max(0,this.flowAt(t)+(Math.random()-.5)*.25)*dt;}
+    else if(this.drip>0){const d=Math.min(this.drip,(this.drip*0.9+0.15)*dt);this.raw+=d;this.drip-=d;if(this.drip<0.02)this.drip=0;}
+    return this.raw+(Math.random()-.5)*0.06;
+  }
+};
+
+// ---------- Estado ----------
+let tareOffset=0, reading=0, running=false, elapsed=0, lastTs=performance.now(), runStart=0;
+let samples=[], flowEma=0, ghost=null, selectedId=null, waitingFlow=false;
+let targetTime=null, pumpStopped=false, lastW=0, lastChangeT=0, hadFlow=false;
+const win=[]; // janela para calcular vazão
+const QUIET_S=2.0; // segundos sem ganho de peso = parou de pingar
+
+const EXAMPLE=(()=>{
+  const s=[];let w=0,t=0,tt=null,drip=0;
+  for(;t<=40;t+=0.2){
+    let f=0;
+    if(drip===0&&w<34.8) f=t<4?0:t<8?(t-4)/4*1.1:t<12?1.1+(t-8)/4*0.9:2+(t-12)*.012;
+    else { if(drip===0) drip=1.4; const d=Math.min(drip,(drip*0.9+0.15)*0.2); drip-=d; f=d/0.2; if(drip<0.02){s.push([+t.toFixed(1),+w.toFixed(1),0]);break;} }
+    w+=f*0.2; if(tt===null&&w>=36) tt=t;
+    s.push([+t.toFixed(1),+w.toFixed(1),+f.toFixed(2)]);
+  }
+  const last=s[s.length-1];
+  return {id:'ex1',date:Date.now()-86400000,dose:18,yieldG:last[1],time:last[0],timeToTarget:tt,example:true,samples:s};
+})();
+let shots=store.get('extracoes',null)||[EXAMPLE];
+
+function target(){return (+$('dose').value||0)*(+$('ratio').value||0);}
+
+function fmtTime(s){const m=Math.floor(s/60),r=s-m*60;return String(m).padStart(2,'0')+':'+r.toFixed(1).padStart(4,'0');}
+
+// ---------- Controles ----------
+$('btnTare').onclick=()=>{tareOffset=reading;toast('Balança tarada');};
+$('btnStart').onclick=()=>{
+  if(waitingFlow){stopShot(false);return;}
+  if(!running){startShot();return;}
+  if(!pumpStopped){sim.stop();pumpStopped=true;setStartBtn();return;} // máquina desligada; o timer espera o gotejamento
+  stopShot(true);
+};
+$('btnReset').onclick=()=>{ if(running) stopShot(false); if(source==='sim'){sim.reset(); tareOffset=0;} elapsed=0; samples=[]; flowEma=0; win.length=0; waitingFlow=false; targetTime=null; pumpStopped=false; hadFlow=false; setStartBtn(); };
+['dose','ratio'].forEach(id=>$(id).addEventListener('input',()=>{$('target').textContent=target().toFixed(1)+' g';store.set('receita',{dose:$('dose').value,ratio:$('ratio').value});}));
+const rec=store.get('receita',null); if(rec){$('dose').value=rec.dose;$('ratio').value=rec.ratio;} $('target').textContent=target().toFixed(1)+' g';
+
+// ---------- Balança real: Timemore Dot por Bluetooth (mesmo protocolo do BalancaService.cs) ----------
+// Serviço 0xFFF0, característica 0xFFF1 (notify). Pacote: A5 5A .. .. .. .. .. .. [PESO_HI PESO_LO] em décimos de grama, int16 big-endian.
+const BLE={SERVICE:0xfff0, CHAR:0xfff1};
+let source='sim', bleWeight=0, bleDevice=null, bleChar=null, userDisconnect=false;
+
+function setChip(text,live){$('chipText').textContent=text;$('chip').classList.toggle('live',!!live);}
+function onBlePacket(ev){
+  const v=ev.target.value; if(v.byteLength<10||v.getUint8(0)!==0xA5||v.getUint8(1)!==0x5A) return;
+  bleWeight=v.getInt16(8,false)/10;
+}
+let bleStep='', bleMode='', bleCharsInfo='', blePoll=null, bleReading=false;
+async function bleSubscribe(){
+  setChip('Conectando…',false);
+  bleStep='conectar'; const server=await bleDevice.gatt.connect();
+  bleStep='abrir o serviço FFF0'; const service=await server.getPrimaryService(BLE.SERVICE);
+  bleStep='abrir a característica FFF1'; bleChar=await service.getCharacteristic(BLE.CHAR);
+  bleChar.addEventListener('characteristicvaluechanged',onBlePacket);
+  bleStep='ativar as notificações';
+  try{ await bleChar.startNotifications(); bleMode='notify'; }
+  catch(errNotify){
+    // Plano 2: outra característica do serviço FFF0 que aceite notificações
+    let chars=[]; try{chars=await service.getCharacteristics();}catch(e){}
+    bleCharsInfo=chars.map(c=>{const p=c.properties;return c.uuid.slice(4,8).toUpperCase()+'['+['read','write','writeWithoutResponse','notify','indicate'].filter(k=>p[k]).map(k=>({read:'R',write:'W',writeWithoutResponse:'w',notify:'N',indicate:'I'})[k]).join('')+']';}).join(' ');
+    console.warn('Características do FFF0:',bleCharsInfo,errNotify);
+    let ok=false;
+    for(const c of chars){ if(c.uuid===bleChar.uuid||!(c.properties.notify||c.properties.indicate)) continue;
+      try{ c.addEventListener('characteristicvaluechanged',onBlePacket); await c.startNotifications(); bleChar=c; ok=true; bleMode='notify '+c.uuid.slice(4,8); break; }catch(e){} }
+    // Plano 3: ler o valor repetidamente, se a leitura for permitida
+    if(!ok&&bleChar.properties.read){
+      bleStep='ler o peso (leitura direta)';
+      const v=await bleChar.readValue(); onBlePacket({target:{value:v}});
+      blePoll=setInterval(async()=>{ if(bleReading) return; bleReading=true;
+        try{ const v=await bleChar.readValue(); onBlePacket({target:{value:v}}); }catch(e){} bleReading=false; },150);
+      ok=true; bleMode='leitura';
+    }
+    if(!ok){ const er=new Error((errNotify.message||'').replace(/\.+$/,'')+' · características: '+(bleCharsInfo||'nenhuma listada')); er.name=errNotify.name; throw er; }
+  }
+  bleStep='';
+  if(source!=='ble'){ sim.reset(); stopShot(false); tareOffset=0; }
+  source='ble'; setChip('Balança conectada',true); $('btnConnect').textContent='Desconectar';
+}
+async function onBleDisconnected(){
+  bleChar=null; if(blePoll){clearInterval(blePoll);blePoll=null;}
+  if(userDisconnect){return;}
+  setChip('Balança desconectada · reconectando…',false);
+  for(let i=0;i<3;i++){
+    await new Promise(r=>setTimeout(r,1500*(i+1)));
+    try{await bleSubscribe();toast('Balança reconectada');return;}catch(e){}
+  }
+  useSimulator('A balança desconectou. Voltando ao simulador.');
+}
+function useSimulator(msg){if(blePoll){clearInterval(blePoll);blePoll=null;}source='sim';bleDevice=null;bleChar=null;sim.reset();tareOffset=0;setChip('Balança simulada',false);$('btnConnect').textContent='Conectar balança';if(msg)toast(msg);}
+
+$('btnConnect').onclick=async()=>{
+  if(source==='ble'&&bleDevice){userDisconnect=true;try{bleDevice.gatt.disconnect();}catch(e){}useSimulator('Balança desconectada. Usando o simulador.');return;}
+  if(!navigator.bluetooth){toast('Este navegador não tem Bluetooth. No iPhone, use o app Bluefy; no computador, o Chrome ou o Edge.');return;}
+  try{
+    userDisconnect=false;
+    bleDevice=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'TIMEMORE'},{namePrefix:'Timemore'},{services:[BLE.SERVICE]}],optionalServices:[BLE.SERVICE]});
+    bleDevice.addEventListener('gattserverdisconnected',onBleDisconnected);
+    await bleSubscribe();
+    toast('Conectado em '+(bleDevice.name||'Timemore')+(bleMode&&bleMode!=='notify'?' (modo: '+bleMode+')':'')+'. Coloque a xícara e toque em Tarar.');
+  }catch(e){
+    userDisconnect=true; try{bleDevice&&bleDevice.gatt.connected&&bleDevice.gatt.disconnect();}catch(_){}
+    if(blePoll){clearInterval(blePoll);blePoll=null;}
+    bleDevice=null; setChip(source==='ble'?'Balança conectada':'Balança simulada',source==='ble');
+    if(e&&e.name==='NotFoundError') return; // a pessoa fechou a janela de escolha
+    if(e&&(e.name==='SecurityError'||e.name==='NotAllowedError')) return toast('O Bluetooth está bloqueado nesta visualização. Abra o app pelo arquivo ou pelo endereço próprio (https) no Chrome, Edge ou Bluefy.');
+    console.warn('Falha no Bluetooth na etapa:',bleStep,e);
+    if(/not paired/i.test(e&&e.message||'')) toast('[etapa: '+bleStep+'] O Windows recusou o acesso sem pareamento criptografado. '+(e.message||'')+'. Tente remover a balança do Windows e deixar o Chrome parear sozinho.');
+    else toast('Não consegui '+(bleStep||'conectar')+' ('+(e&&e.message||e)+'). Feche o app da Timemore e o do ESP32 e tente de novo.');
+  }
+};
+
+function setStartBtn(){const b=$('btnStart');
+  b.textContent=waitingFlow?'Cancelar':running?(pumpStopped?'Encerrar agora':'Parar'):'Iniciar';
+  b.classList.toggle('running',running||waitingFlow);}
+
+function startShot(){
+  // zera a curva e começa; tara automática se a xícara estiver na balança
+  samples=[]; elapsed=0; flowEma=0; win.length=0;
+  targetTime=null; pumpStopped=false; lastW=0; lastChangeT=0; hadFlow=false;
+  if(source==='sim'){ sim.raw=0; tareOffset=0; sim.start(); }
+  else { tareOffset=reading; } // balança real: tara a xícara vazia no início
+  if($('autoStart').checked){waitingFlow=true;running=false;}
+  else {running=true;runStart=performance.now();}
+  setStartBtn();
+}
+// endTime: instante em que o café parou de pingar (último ganho de peso)
+function stopShot(save=true,endTime){
+  const wasRunning=running||waitingFlow;
+  running=false;waitingFlow=false;sim.stop();setStartBtn();
+  if(endTime!=null){elapsed=endTime;samples=samples.filter(s=>s.t<=endTime+0.05);}
+  if(save&&wasRunning&&samples.length>5){
+    const y=Math.max(...samples.map(s=>s.w));
+    const shot={id:'s'+Date.now(),date:Date.now(),dose:+$('dose').value,yieldG:+y.toFixed(1),time:+elapsed.toFixed(1),
+      timeToTarget:targetTime!=null?+targetTime.toFixed(1):null,
+      samples:samples.map(s=>[+s.t.toFixed(1),+s.w.toFixed(1),+s.f.toFixed(2)])};
+    shots=[shot,...shots.filter(s=>!s.example)].slice(0,30); store.set('extracoes',shots); renderShots();
+    toast('Extração salva: '+shot.yieldG.toFixed(1)+' g'+(shot.timeToTarget!=null?', alvo em '+shot.timeToTarget.toFixed(1)+' s':'')+', total '+shot.time.toFixed(1)+' s');
+  }
+}
+
+// ---------- Loop ----------
+function loop(ts){
+  const dt=Math.min(.1,(ts-lastTs)/1000); lastTs=ts;
+  reading=source==='ble'?bleWeight:sim.tick(dt);
+  const w=Math.max(-99,reading-tareOffset);
+  // vazão: inclinação na última 1 s, suavizada
+  win.push([ts/1000,w]); while(win.length&&ts/1000-win[0][0]>1) win.shift();
+  let f=0; if(win.length>3){const a=win[0],b=win[win.length-1];f=Math.max(0,(b[1]-a[1])/Math.max(.2,b[0]-a[0]));}
+  flowEma=flowEma*0.8+f*0.2;
+
+  if(waitingFlow&&w>0.4){waitingFlow=false;running=true;runStart=ts-400;setStartBtn();}
+  if(running){
+    elapsed=(ts-runStart)/1000;
+    const last=samples[samples.length-1];
+    if(!last||elapsed-last.t>=0.1) samples.push({t:elapsed,w:Math.max(0,w),f:flowEma});
+    // marca o tempo em que a proporção foi atingida (o timer segue)
+    if(targetTime===null&&target()>0&&w>=target()) targetTime=elapsed;
+    // simulação: o barista desliga a bomba um pouco antes do alvo, contando com o gotejamento
+    if(source==='sim'&&!pumpStopped&&target()>0&&w>=target()-1.2){sim.stop();pumpStopped=true;setStartBtn();}
+    // balança real: depois do alvo, considera que a máquina foi desligada e acompanha o gotejamento
+    if(source==='ble'&&!pumpStopped&&targetTime!==null){pumpStopped=true;setStartBtn();}
+    // detecção de fim: peso parou de subir por QUIET_S segundos
+    if(flowEma>0.5) hadFlow=true;
+    if(w-lastW>0.1){lastW=w;lastChangeT=elapsed;}
+    if($('autoStop').checked&&hadFlow&&elapsed-lastChangeT>=QUIET_S){stopShot(true,lastChangeT);}
+  }
+  render(w);
+  requestAnimationFrame(loop);
+}
+
+function render(w){
+  curW=w; const shown=Math.abs(w)<0.05?0:w;
+  $('weight').textContent=shown.toFixed(1)+' g';
+  $('time').textContent=fmtTime(elapsed);
+  $('flow').innerHTML=flowEma.toFixed(1)+'<small>g/s</small>';
+  $('tTarget').textContent=targetTime!=null?targetTime.toFixed(1)+' s':'--';
+  const ph=$('phase'); let cls='';
+  // como no app em C#: estável quando as leituras do último segundo variam menos de 0,3 g
+  const ws=win.map(p=>p[1]); const stable=ws.length>3&&Math.max(...ws)-Math.min(...ws)<0.3;
+  let txt='Pronto · '+(stable?'Estável':'Variando');
+  if(waitingFlow){txt='Aguardando o café cair';cls='on';}
+  else if(running&&!pumpStopped){txt='Extraindo';cls='on';}
+  else if(running){txt='Gotejando · aguardando parar de pingar';cls='drip';}
+  else if(samples.length){txt='Extração encerrada';cls='end';}
+  if(ph.textContent!==txt){ph.textContent=txt;ph.className='phase '+cls;}
+  const T=target(), dose=+$('dose').value||0;
+  const pct=T>0?Math.min(100,Math.max(0,w/T*100)):0;
+  drawGaugeBox();
+  $('ratioNow').textContent='1 : '+(dose>0?Math.max(0,w)/dose:0).toFixed(1);
+  const left=T-w; $('toGo').textContent=left>0.05?'faltam '+left.toFixed(1)+' g':'alvo atingido';
+  drawChart();
+}
+
+// ---------- Gráfico ----------
+const cv=$('chart'), ctx=cv.getContext('2d');
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+// ---------- Ponteiro (tanque enchendo) ----------
+let viewMode=store.get('modoGrafico','curve'), curW=0, needle=0, needleV=0, lastDraw=performance.now();
+const reduceMotion=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+const gcv=$('gauge'), gctx=gcv.getContext('2d');
+function colors(){return {ink:css('--ink'),muted:css('--muted'),line:css('--line'),w:css('--weight'),f:css('--flow'),t:css('--target'),ok:css('--ok'),warn:css('--warn'),panel:css('--panel')};}
+function drawGaugeBox(){
+  const dpr=window.devicePixelRatio||1, W=gcv.clientWidth, H=gcv.clientHeight; if(!W||!H) return;
+  if(gcv.width!==Math.round(W*dpr)||gcv.height!==Math.round(H*dpr)){gcv.width=Math.round(W*dpr);gcv.height=Math.round(H*dpr);}
+  gctx.setTransform(dpr,0,0,dpr,0,0); gctx.clearRect(0,0,W,H);
+  drawGauge(W,H,colors(),gctx);
+}
+
+function drawGauge(W,H,C,ctx){
+  const now=performance.now(), dt=Math.min(.05,(now-lastDraw)/1000); lastDraw=now;
+  const T=target(), max=T>0?T*1.2:40, val=Math.max(0,Math.min(curW,max*1.02));
+  // mola levemente subamortecida: o ponteiro balança um pouco, como num painel de carro
+  if(reduceMotion){needle=val;needleV=0;} else {const k=55,c=9;needleV+=(k*(val-needle)-c*needleV)*dt;needle+=needleV*dt;}
+  const A0=Math.PI*5/6, SW=Math.PI*4/3, ang=v=>A0+Math.max(0,Math.min(v,max*1.02))/max*SW;
+  const cx=W/2, r=Math.max(60,Math.min(W/2-34,(H-44)/1.75)), cy=r+30+Math.max(0,(H-44-1.75*r)/2);
+  ctx.lineCap='round';
+  // trilho
+  ctx.lineWidth=16; ctx.strokeStyle=C.line; ctx.beginPath(); ctx.arc(cx,cy,r,A0,A0+SW); ctx.stroke();
+  // faixa acima do alvo
+  if(T>0){ctx.lineCap='butt';ctx.strokeStyle=C.warn;ctx.globalAlpha=.25;ctx.beginPath();ctx.arc(cx,cy,r,ang(T),A0+SW);ctx.stroke();ctx.globalAlpha=1;ctx.lineCap='round';}
+  // preenchimento (o tanque)
+  const reached=T>0&&needle>=T-0.3;
+  if(needle>0.05){ctx.strokeStyle=reached?C.ok:C.w;ctx.beginPath();ctx.arc(cx,cy,r,A0,ang(needle));ctx.stroke();}
+  // vazão: anel interno fino, 0–4 g/s
+  const fr=r-26, fA=A0+Math.min(flowEma,4)/4*SW;
+  ctx.lineWidth=5; ctx.strokeStyle=C.line; ctx.beginPath(); ctx.arc(cx,cy,fr,A0,A0+SW); ctx.stroke();
+  if(flowEma>0.05){ctx.strokeStyle=C.f;ctx.beginPath();ctx.arc(cx,cy,fr,A0,fA);ctx.stroke();}
+  // marcas
+  const step=max<=30?1:max<=60?2:5, major=max<=30?5:max<=60?10:20;
+  ctx.lineCap='butt'; ctx.font='11px '+css('--mono'); ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(let v=0;v<=max+0.001;v+=step){const a=ang(v),isM=Math.abs(v%major)<1e-6,r1=r+11,r2=r+(isM?22:16);
+    ctx.strokeStyle=isM?C.muted:C.line;ctx.lineWidth=isM?2:1;ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*r1,cy+Math.sin(a)*r1);ctx.lineTo(cx+Math.cos(a)*r2,cy+Math.sin(a)*r2);ctx.stroke();}
+  // rótulos 0 e alvo, estilo marcador de combustível
+  ctx.font='600 12px '+css('--body');
+  const lab=(v,t,col)=>{const a=ang(v),rr=r-48;ctx.fillStyle=col;ctx.fillText(t,cx+Math.cos(a)*rr,cy+Math.sin(a)*rr);};
+  lab(0,'0 g',C.muted);
+  if(T>0){const a=ang(T);ctx.strokeStyle=C.t;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*(r-10),cy+Math.sin(a)*(r-10));ctx.lineTo(cx+Math.cos(a)*(r+24),cy+Math.sin(a)*(r+24));ctx.stroke();
+    lab(T,'alvo '+T.toFixed(0)+' g',C.t);}
+  // ponteiro
+  const na=ang(needle), L=r+6;
+  ctx.save(); ctx.shadowColor='rgba(0,0,0,.25)'; ctx.shadowBlur=6;
+  ctx.strokeStyle=C.warn; ctx.lineWidth=4; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(cx-Math.cos(na)*16,cy-Math.sin(na)*16); ctx.lineTo(cx+Math.cos(na)*L,cy+Math.sin(na)*L); ctx.stroke(); ctx.restore();
+  ctx.fillStyle=C.ink; ctx.beginPath(); ctx.arc(cx,cy,10,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle=C.panel; ctx.beginPath(); ctx.arc(cx,cy,4,0,Math.PI*2); ctx.fill();
+  // leitura central
+  const shownW=Math.abs(curW)<0.05?0:Math.max(0,curW);
+  ctx.fillStyle=reached?C.ok:C.w; ctx.font='600 '+Math.round(r*0.38)+'px '+css('--mono'); ctx.textBaseline='alphabetic';
+  ctx.fillText(shownW.toFixed(1),cx,cy+r*0.62);
+  ctx.fillStyle=C.muted; ctx.font=Math.round(Math.max(11,r*0.12))+'px '+css('--mono');
+  ctx.fillText('gramas',cx,cy+r*0.8);
+}
+
+function drawChart(){
+  const dpr=window.devicePixelRatio||1, W=cv.clientWidth, H=cv.clientHeight;
+  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);}
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+  const C={ink:css('--ink'),muted:css('--muted'),line:css('--line'),w:css('--weight'),f:css('--flow'),t:css('--target'),ok:css('--ok'),warn:css('--warn'),panel:css('--panel')};
+
+  const pad={l:40,r:40,t:12,b:28}, pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+  const live=samples.map(s=>[s.t,s.w,s.f]); const g=ghost?ghost.samples:null;
+  const T=target();
+  const maxT=Math.max(35,...live.map(s=>s[0]),...(g?g.map(s=>s[0]):[0]));
+  const xMax=Math.ceil(maxT/5)*5;
+  const maxW=Math.max(T*1.15,40,...live.map(s=>s[1]),...(g?g.map(s=>s[1]):[0]));
+  const yMax=Math.ceil(maxW/10)*10;
+  const fMax=Math.max(4,Math.ceil(Math.max(...live.map(s=>s[2]),...(g?g.map(s=>s[2]):[0]))+0.5));
+  const X=t=>pad.l+t/xMax*pw, Y=v=>pad.t+ph-v/yMax*ph, YF=v=>pad.t+ph-v/fMax*ph;
+
+  ctx.font='11px '+css('--mono'); ctx.lineWidth=1;
+  // grade e eixos
+  ctx.strokeStyle=C.line; ctx.fillStyle=C.muted; ctx.textBaseline='middle';
+  const ySteps=yMax<=40?10:yMax<=80?20:25;
+  for(let v=0;v<=yMax;v+=ySteps){ctx.beginPath();ctx.moveTo(pad.l,Y(v));ctx.lineTo(pad.l+pw,Y(v));ctx.stroke();ctx.textAlign='right';ctx.fillText(v,pad.l-6,Y(v));}
+  ctx.textAlign='left';
+  for(let v=0;v<=fMax;v+=1){ctx.fillStyle=C.f;ctx.globalAlpha=.8;ctx.fillText(v,pad.l+pw+6,YF(v));}
+  ctx.globalAlpha=1; ctx.fillStyle=C.muted; ctx.textAlign='center'; ctx.textBaseline='top';
+  for(let t=0;t<=xMax;t+=5){ctx.fillText(t+'s',X(t),pad.t+ph+8);}
+
+  // alvo
+  if(T>0&&T<=yMax){ctx.save();ctx.setLineDash([5,5]);ctx.strokeStyle=C.t;ctx.beginPath();ctx.moveTo(pad.l,Y(T));ctx.lineTo(pad.l+pw,Y(T));ctx.stroke();ctx.restore();
+    ctx.fillStyle=C.t;ctx.textAlign='left';ctx.textBaseline='bottom';ctx.fillText('alvo '+T.toFixed(1)+' g',pad.l+6,Y(T)-3);}
+
+  // marca vertical do tempo até o alvo
+  function vmark(t,color,label,alpha){
+    if(t==null||t>xMax) return; ctx.save(); ctx.globalAlpha=alpha; ctx.setLineDash([3,4]); ctx.strokeStyle=color;
+    ctx.beginPath(); ctx.moveTo(X(t),pad.t); ctx.lineTo(X(t),pad.t+ph); ctx.stroke();
+    if(label){ctx.setLineDash([]);ctx.fillStyle=color;ctx.textAlign=X(t)>pad.l+pw-70?'right':'left';ctx.textBaseline='top';ctx.font='11px '+css('--mono');
+      ctx.fillText(label,X(t)+(ctx.textAlign==='right'?-5:5),pad.t+2);}
+    ctx.restore();
+  }
+  if(g&&ghost.timeToTarget!=null) vmark(ghost.timeToTarget,C.muted,live.length?null:'alvo '+ghost.timeToTarget.toFixed(1)+'s',.8);
+  vmark(targetTime,C.t,targetTime!=null?'alvo '+targetTime.toFixed(1)+'s':null,1);
+
+  function line(data,idx,scale,color,width,dash,fill){
+    if(!data||data.length<2) return;
+    ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=width; if(dash) ctx.setLineDash(dash);
+    ctx.beginPath(); data.forEach((s,i)=>{const x=X(s[0]),y=scale(s[idx]); i?ctx.lineTo(x,y):ctx.moveTo(x,y);}); ctx.stroke();
+    if(fill){ctx.lineTo(X(data[data.length-1][0]),pad.t+ph);ctx.lineTo(X(data[0][0]),pad.t+ph);ctx.closePath();ctx.globalAlpha=.12;ctx.fillStyle=color;ctx.fill();}
+    ctx.restore();
+  }
+  if(g){ line(g,1,Y,C.muted,1.5,[4,4]); line(g,2,YF,C.muted,1,[2,4]); }
+  line(live,2,YF,C.f,2);
+  line(live,1,Y,C.w,2.5,null,true);
+  if(live.length){const s=live[live.length-1];ctx.fillStyle=C.w;ctx.beginPath();ctx.arc(X(s[0]),Y(s[1]),4,0,Math.PI*2);ctx.fill();}
+  if(!live.length&&!g){ctx.fillStyle=C.muted;ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='14px '+css('--body');ctx.fillText('Toque em Iniciar para desenhar a curva',pad.l+pw/2,pad.t+ph/2);}
+}
+
+// ---------- Histórico ----------
+function renderShots(){
+  const ul=$('shots'); ul.innerHTML=''; $('shotCount').textContent=shots.length;
+  if(!shots.length){ul.innerHTML='<tr><td class="empty" colspan="6">Nenhuma extração ainda. Faça a primeira com o botão Iniciar.</td></tr>';return;}
+  shots.forEach(s=>{
+    const li=document.createElement('tr'); li.className=s.id===selectedId?'sel':''; li.tabIndex=0;
+    const d=new Date(s.date); const when=d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    li.innerHTML='<td class="when">'+when+(s.example?'<span class="tag">exemplo</span>':'')+'</td>'+
+      '<td>'+s.dose.toFixed(1)+' g</td><td class="wc">'+s.yieldG.toFixed(1)+' g</td><td>1:'+(s.yieldG/s.dose).toFixed(1)+'</td>'+
+      '<td class="tc">'+(s.timeToTarget!=null?s.timeToTarget.toFixed(1)+' s':'--')+'</td><td>'+s.time.toFixed(1)+' s</td>';
+    const pick=()=>{
+      if(selectedId===s.id){setGhost(null);}
+      else {setGhost(s);showTab('extracao');toast('Curva de '+when+' sobreposta à extração atual');}
+    };
+    li.onclick=pick; li.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick();}};
+    ul.appendChild(li);
+  });
+}
+
+function setGhost(s){ghost=s;selectedId=s?s.id:null;$('ghostLegend').hidden=!s;
+  if(s){const d=new Date(s.date);$('ghostName').textContent='Comparação ('+d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+')';}
+  renderShots();}
+$('btnClearGhost').onclick=()=>setGhost(null);
+
+function showTab(name){
+  ['extracao','historico'].forEach(n=>{const on=n===name;$('tab-'+n).hidden=!on;$('tabbtn-'+n).setAttribute('aria-selected',on);});
+  try{history.replaceState(null,'','#'+name);}catch(e){}
+}
+document.querySelectorAll('.tabs [role=tab]').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+
+let tt; function toast(m){const t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,Math.max(3200,m.length*60));}
+
+// estado inicial: mostra a extração de exemplo para comparação
+renderShots();
+if(location.hash==='#historico') showTab('historico');
+try{navigator.wakeLock&&navigator.wakeLock.request('screen').catch(()=>{});}catch(e){}
+requestAnimationFrame(loop);
+})();
+</script>
+
+</body></html>
