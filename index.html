@@ -132,7 +132,7 @@ canvas{width:100%;height:100%;display:block}
 
 <div class="wrap">
   <header>
-    <h1>Painel de Extração <span class="ver" id="ver" title="Versão do app">v1.4</span></h1>
+    <h1>Painel de Extração <span class="ver" id="ver" title="Versão do app">v1.5</span></h1>
     <div class="status">
       <span class="chip" id="chip"><span class="dot"></span><span id="chipText">Balança simulada</span></span>
       <button class="ghost" id="btnConnect" type="button">Conectar balança</button>
@@ -282,7 +282,7 @@ const rec=store.get('receita',null); if(rec){$('dose').value=rec.dose;$('ratio')
 
 // ---------- Balança real: Timemore Dot por Bluetooth (mesmo protocolo do BalancaService.cs) ----------
 // Serviço 0xFFF0, característica 0xFFF1 (notify). Pacote: A5 5A .. .. .. .. .. .. [PESO_HI PESO_LO] em décimos de grama, int16 big-endian.
-const BLE={SERVICE:0xfff0, CHAR:0xfff1};
+const BLE={SERVICE:'0000fff0-0000-1000-8000-00805f9b34fb', CHAR:'0000fff1-0000-1000-8000-00805f9b34fb'}; // UUIDs completos: alguns navegadores (Bluefy) não aceitam a forma curta
 let source='sim', bleWeight=0, bleDevice=null, bleChar=null, userDisconnect=false;
 
 function setChip(text,live){$('chipText').textContent=text;$('chip').classList.toggle('live',!!live);}
@@ -340,7 +340,7 @@ function diag(){
 }
 function showError(msg,err,withRetryAll){
   $('errMsg').textContent=msg;
-  $('errDetail').textContent=(err?(err.name||'Erro')+': '+(err.message||String(err))+' · ':'')+diag();
+  $('errDetail').textContent=(err!=null?(err.name||'Erro')+': '+(err.message||(typeof err==='object'?JSON.stringify(err):String(err)))+' · ':'')+diag();
   $('errAll').hidden=!withRetryAll; $('errbox').hidden=false;
 }
 $('errClose').onclick=()=>{$('errbox').hidden=true;};
@@ -353,16 +353,19 @@ async function connectBle(showAll){
   try{
     userDisconnect=false;
     bleStep=showAll?'procurar aparelhos (todos)':'procurar a balança';
-    const opts=showAll
-      ? {acceptAllDevices:true,optionalServices:[BLE.SERVICE]}
-      : {filters:[{namePrefix:'TIMEMORE'},{namePrefix:'Timemore'},{services:[BLE.SERVICE]}],optionalServices:[BLE.SERVICE]};
-    try{ bleDevice=await navigator.bluetooth.requestDevice(opts); }
-    catch(e1){
-      if(!showAll&&e1&&(e1.name==='TypeError'||e1.name==='NotSupportedError'||e1.name==='InvalidStateError')){
-        bleStep='procurar aparelhos (todos)';
-        bleDevice=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[BLE.SERVICE]});
-      } else throw e1;
+    // tenta do filtro mais específico ao mais aberto; para se a pessoa cancelar a lista
+    const tries=showAll
+      ? [{acceptAllDevices:true,optionalServices:[BLE.SERVICE]}]
+      : [{filters:[{namePrefix:'TIMEMORE'}],optionalServices:[BLE.SERVICE]},
+         {filters:[{services:[BLE.SERVICE]}]},
+         {acceptAllDevices:true,optionalServices:[BLE.SERVICE]}];
+    let lastErr=null; bleDevice=null;
+    for(let i=0;i<tries.length&&!bleDevice;i++){
+      bleStep='procurar a balança (tentativa '+(i+1)+')';
+      try{ bleDevice=await navigator.bluetooth.requestDevice(tries[i]); }
+      catch(e1){ lastErr=e1; if(e1&&e1.name==='NotFoundError'&&/cancel/i.test(e1.message||'')) throw e1; }
     }
+    if(!bleDevice) throw lastErr||new Error('nenhum aparelho');
     bleDevice.addEventListener('gattserverdisconnected',onBleDisconnected);
     await bleSubscribe();
     $('errbox').hidden=true;
