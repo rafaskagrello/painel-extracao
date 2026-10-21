@@ -132,7 +132,7 @@ canvas{width:100%;height:100%;display:block}
 
 <div class="wrap">
   <header>
-    <h1>Painel de Extração <span class="ver" id="ver" title="Versão do app">v1.5</span></h1>
+    <h1>Painel de Extração <span class="ver" id="ver" title="Versão do app">v1.6</span></h1>
     <div class="status">
       <span class="chip" id="chip"><span class="dot"></span><span id="chipText">Balança simulada</span></span>
       <button class="ghost" id="btnConnect" type="button">Conectar balança</button>
@@ -159,7 +159,7 @@ canvas{width:100%;height:100%;display:block}
         <div class="pair trio">
           <div class="readout"><span class="label">Tempo total</span><div class="mid" id="time">00:00.0</div></div>
           <div class="readout"><span class="label">Até o alvo</span><div class="mid tc" id="tTarget">--</div></div>
-          <div class="readout"><span class="label">Vazão</span><div class="mid flowc" id="flow">0.0<small>g/s</small></div></div>
+          <div class="readout"><span class="label" id="flowLabel">Vazão</span><div class="mid flowc" id="flow">0.0<small>g/s</small></div></div>
         </div>
         <div class="phase" id="phase">Pronto</div>
         <div class="progress">
@@ -269,14 +269,14 @@ function target(){return (+$('dose').value||0)*(+$('ratio').value||0);}
 function fmtTime(s){const m=Math.floor(s/60),r=s-m*60;return String(m).padStart(2,'0')+':'+r.toFixed(1).padStart(4,'0');}
 
 // ---------- Controles ----------
-$('btnTare').onclick=()=>{tareOffset=reading;toast('Balança tarada');};
+$('btnTare').onclick=()=>{tareOffset=reading;frozen=null;toast('Balança tarada');};
 $('btnStart').onclick=()=>{
   if(waitingFlow){stopShot(false);return;}
   if(!running){startShot();return;}
   if(!pumpStopped){sim.stop();pumpStopped=true;setStartBtn();return;} // máquina desligada; o timer espera o gotejamento
   stopShot(true);
 };
-$('btnReset').onclick=()=>{ if(running) stopShot(false); if(source==='sim'){sim.reset(); tareOffset=0;} elapsed=0; samples=[]; flowEma=0; win.length=0; waitingFlow=false; targetTime=null; pumpStopped=false; hadFlow=false; setStartBtn(); };
+$('btnReset').onclick=()=>{ if(running) stopShot(false); frozen=null; if(source==='sim'){sim.reset(); tareOffset=0;} elapsed=0; samples=[]; flowEma=0; win.length=0; waitingFlow=false; targetTime=null; pumpStopped=false; hadFlow=false; setStartBtn(); };
 ['dose','ratio'].forEach(id=>$(id).addEventListener('input',()=>{$('target').textContent=target().toFixed(1)+' g';store.set('receita',{dose:$('dose').value,ratio:$('ratio').value});}));
 const rec=store.get('receita',null); if(rec){$('dose').value=rec.dose;$('ratio').value=rec.ratio;} $('target').textContent=target().toFixed(1)+' g';
 
@@ -391,6 +391,7 @@ function setStartBtn(){const b=$('btnStart');
   b.classList.toggle('running',running||waitingFlow);}
 
 function startShot(){
+  frozen=null;
   // zera a curva e começa; tara automática se a xícara estiver na balança
   samples=[]; elapsed=0; flowEma=0; win.length=0;
   targetTime=null; pumpStopped=false; lastW=0; lastChangeT=0; hadFlow=false;
@@ -405,6 +406,8 @@ function stopShot(save=true,endTime){
   const wasRunning=running||waitingFlow;
   running=false;waitingFlow=false;sim.stop();setStartBtn();
   if(endTime!=null){elapsed=endTime;samples=samples.filter(s=>s.t<=endTime+0.05);}
+  // congela o resultado: tirar a xícara da balança não apaga peso, proporção nem vazão
+  if(wasRunning&&samples.length){const y=Math.max(...samples.map(s=>s.w));frozen={w:y,flow:elapsed>0?y/elapsed:0};}
   if(save&&wasRunning&&samples.length>5){
     const y=Math.max(...samples.map(s=>s.w));
     const shot={id:'s'+Date.now(),date:Date.now(),dose:+$('dose').value,yieldG:+y.toFixed(1),time:+elapsed.toFixed(1),
@@ -439,6 +442,8 @@ function loop(ts){
     // detecção de fim: peso parou de subir por QUIET_S segundos
     if(flowEma>0.5) hadFlow=true;
     if(w-lastW>0.1){lastW=w;lastChangeT=elapsed;}
+    // xícara retirada no meio do gotejamento: queda brusca de peso encerra no último ganho
+    if(lastW>3&&w<lastW-5){stopShot(true,lastChangeT);}
     if($('autoStop').checked&&hadFlow&&elapsed-lastChangeT>=QUIET_S){stopShot(true,lastChangeT);}
   }
   render(w);
@@ -446,10 +451,13 @@ function loop(ts){
 }
 
 function render(w){
+  const live=w, isFrozen=!!(frozen&&!running&&!waitingFlow);
+  if(isFrozen){w=frozen.w;dispFlow=frozen.flow;} else dispFlow=flowEma;
   curW=w; const shown=Math.abs(w)<0.05?0:w;
   $('weight').textContent=shown.toFixed(1)+' g';
   $('time').textContent=fmtTime(elapsed);
-  $('flow').innerHTML=flowEma.toFixed(1)+'<small>g/s</small>';
+  $('flow').innerHTML=dispFlow.toFixed(1)+'<small>g/s</small>';
+  const fl=isFrozen?'Vazão média':'Vazão'; if($('flowLabel').textContent!==fl) $('flowLabel').textContent=fl;
   $('tTarget').textContent=targetTime!=null?targetTime.toFixed(1)+' s':'--';
   const ph=$('phase'); let cls='';
   // como no app em C#: estável quando as leituras do último segundo variam menos de 0,3 g
@@ -458,7 +466,7 @@ function render(w){
   if(waitingFlow){txt='Aguardando o café cair';cls='on';}
   else if(running&&!pumpStopped){txt='Extraindo';cls='on';}
   else if(running){txt='Gotejando · aguardando parar de pingar';cls='drip';}
-  else if(samples.length){txt='Extração encerrada';cls='end';}
+  else if(samples.length){txt='Extração encerrada'+(isFrozen&&Math.abs(live-w)>1?' · balança agora: '+(Math.abs(live)<0.05?0:live).toFixed(1)+' g':'');cls='end';}
   if(ph.textContent!==txt){ph.textContent=txt;ph.className='phase '+cls;}
   const T=target(), dose=+$('dose').value||0;
   const pct=T>0?Math.min(100,Math.max(0,w/T*100)):0;
@@ -472,6 +480,7 @@ function render(w){
 const cv=$('chart'), ctx=cv.getContext('2d');
 function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
 // ---------- Ponteiro (tanque enchendo) ----------
+let frozen=null, dispFlow=0;
 let viewMode=store.get('modoGrafico','curve'), curW=0, needle=0, needleV=0, lastDraw=performance.now();
 const reduceMotion=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 const gcv=$('gauge'), gctx=gcv.getContext('2d');
@@ -499,9 +508,9 @@ function drawGauge(W,H,C,ctx){
   const reached=T>0&&needle>=T-0.3;
   if(needle>0.05){ctx.strokeStyle=reached?C.ok:C.w;ctx.beginPath();ctx.arc(cx,cy,r,A0,ang(needle));ctx.stroke();}
   // vazão: anel interno fino, 0–4 g/s
-  const fr=r-26, fA=A0+Math.min(flowEma,4)/4*SW;
+  const fr=r-26, fA=A0+Math.min(dispFlow,4)/4*SW;
   ctx.lineWidth=5; ctx.strokeStyle=C.line; ctx.beginPath(); ctx.arc(cx,cy,fr,A0,A0+SW); ctx.stroke();
-  if(flowEma>0.05){ctx.strokeStyle=C.f;ctx.beginPath();ctx.arc(cx,cy,fr,A0,fA);ctx.stroke();}
+  if(dispFlow>0.05){ctx.strokeStyle=C.f;ctx.beginPath();ctx.arc(cx,cy,fr,A0,fA);ctx.stroke();}
   // marcas
   const step=max<=30?1:max<=60?2:5, major=max<=30?5:max<=60?10:20;
   ctx.lineCap='butt'; ctx.font='11px '+css('--mono'); ctx.textAlign='center'; ctx.textBaseline='middle';

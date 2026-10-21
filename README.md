@@ -12,6 +12,7 @@ Uso no iPhone: abrir pelo app Bluefy. No computador: Chrome ou Edge (a balança 
 
 ## Versões
 
+- **v1.6** — resultado da extração fica congelado ao tirar a xícara (peso, proporção, vazão média); retirar a xícara durante o gotejamento encerra a extração.
 - **v1.5** — UUIDs completos (compatibilidade com o Bluefy) e três tentativas de busca: por nome, por serviço e todos os aparelhos.
 - **v1.4** — erros de conexão ficam na tela com diagnóstico (navegador, etapa); botão para mostrar todos os aparelhos.
 - **v1.3** — número da versão no topo; mensagens de erro do Bluetooth detalhadas; busca alternativa mostrando todos os aparelhos.
