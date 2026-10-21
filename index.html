@@ -328,7 +328,15 @@ $('btnConnect').onclick=async()=>{
   if(!navigator.bluetooth){toast('Este navegador não tem Bluetooth. No iPhone, use o app Bluefy; no computador, o Chrome ou o Edge.');return;}
   try{
     userDisconnect=false;
-    bleDevice=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'TIMEMORE'},{namePrefix:'Timemore'},{services:[BLE.SERVICE]}],optionalServices:[BLE.SERVICE]});
+    bleStep='procurar a balança';
+    try{
+      bleDevice=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'TIMEMORE'},{namePrefix:'Timemore'},{services:[BLE.SERVICE]}],optionalServices:[BLE.SERVICE]});
+    }catch(e1){
+      // alguns navegadores (ex.: Bluefy) recusam filtros combinados: tenta mostrando todos os aparelhos
+      if(e1&&(e1.name==='TypeError'||e1.name==='NotSupportedError'||e1.name==='InvalidStateError')){
+        bleDevice=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[BLE.SERVICE,'0000fff0-0000-1000-8000-00805f9b34fb']});
+      } else throw e1;
+    }
     bleDevice.addEventListener('gattserverdisconnected',onBleDisconnected);
     await bleSubscribe();
     toast('Conectado em '+(bleDevice.name||'Timemore')+(bleMode&&bleMode!=='notify'?' (modo: '+bleMode+')':'')+'. Coloque a xícara e toque em Tarar.');
@@ -337,7 +345,7 @@ $('btnConnect').onclick=async()=>{
     if(blePoll){clearInterval(blePoll);blePoll=null;}
     bleDevice=null; setChip(source==='ble'?'Balança conectada':'Balança simulada',source==='ble');
     if(e&&e.name==='NotFoundError') return; // a pessoa fechou a janela de escolha
-    if(e&&(e.name==='SecurityError'||e.name==='NotAllowedError')) return toast('O Bluetooth está bloqueado nesta visualização. Abra o app pelo arquivo ou pelo endereço próprio (https) no Chrome, Edge ou Bluefy.');
+    if(e&&(e.name==='SecurityError'||e.name==='NotAllowedError')) return toast('Bluetooth bloqueado ('+e.name+': '+(e.message||'sem detalhes')+'). No iPhone: Ajustes → Bluefy → ligue o Bluetooth, e confira se o Bluetooth do iPhone está ligado. No computador: abra pelo arquivo ou pelo endereço https, no Chrome ou Edge.');
     console.warn('Falha no Bluetooth na etapa:',bleStep,e);
     if(/not paired/i.test(e&&e.message||'')) toast('[etapa: '+bleStep+'] O Windows recusou o acesso sem pareamento criptografado. '+(e.message||'')+'. Tente remover a balança do Windows e deixar o Chrome parear sozinho.');
     else toast('Não consegui '+(bleStep||'conectar')+' ('+(e&&e.message||e)+'). Feche o app da Timemore e o do ESP32 e tente de novo.');
